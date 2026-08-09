@@ -41,11 +41,12 @@ public class MainActivity extends AppCompatActivity {
     private View tvEmpty;
     private View overlayKeep, overlayDelete;
     private CardView cardView;
-    private View btnFolder, btnDelete, btnKeep, btnSave;
+    private View btnFolder, btnExit;
     private GestureDetector gestureDetector;
     private List<String> mediaPaths = new ArrayList<>();
     private int currentIndex = 0;
     private String currentFolderPath = "";
+    private boolean positionSaved = false;
     private SharedPreferences prefs;
 
     private static final int PERMISSION_REQUEST = 100;
@@ -64,16 +65,14 @@ public class MainActivity extends AppCompatActivity {
         imageView      = findViewById(R.id.imageView);
         videoView      = findViewById(R.id.videoView);
         videoContainer = findViewById(R.id.videoContainer);
-        tvCounter    = findViewById(R.id.tvCounter);
-        tvEmpty      = findViewById(R.id.tvEmpty);
-        tvType       = findViewById(R.id.tvType);
-        overlayKeep  = findViewById(R.id.overlayKeep);
-        overlayDelete= findViewById(R.id.overlayDelete);
-        cardView     = findViewById(R.id.cardView);
-        btnFolder    = findViewById(R.id.btnFolder);
-        btnDelete    = findViewById(R.id.btnDelete);
-        btnKeep      = findViewById(R.id.btnKeep);
-        btnSave      = findViewById(R.id.btnSave);
+        tvCounter      = findViewById(R.id.tvCounter);
+        tvEmpty        = findViewById(R.id.tvEmpty);
+        tvType         = findViewById(R.id.tvType);
+        overlayKeep    = findViewById(R.id.overlayKeep);
+        overlayDelete  = findViewById(R.id.overlayDelete);
+        cardView       = findViewById(R.id.cardView);
+        btnFolder      = findViewById(R.id.btnFolder);
+        btnExit        = findViewById(R.id.btnExit);
 
         MediaController mc = new MediaController(this);
         mc.setAnchorView(videoView);
@@ -83,11 +82,44 @@ public class MainActivity extends AppCompatActivity {
         cardView.setOnTouchListener((v, event) -> { gestureDetector.onTouchEvent(event); return true; });
 
         btnFolder.setOnClickListener(v -> requestPermissionsAndPick());
-        btnDelete.setOnClickListener(v -> { if (!mediaPaths.isEmpty()) deleteFile(); });
-        btnKeep.setOnClickListener(v -> { if (!mediaPaths.isEmpty()) keepFile(); });
-        btnSave.setOnClickListener(v -> savePosition());
+        btnExit.setOnClickListener(v -> onExitPressed());
 
         new android.os.Handler().postDelayed(this::checkSavedSession, 300);
+    }
+
+    private void onExitPressed() {
+        if (mediaPaths.isEmpty()) { finish(); return; }
+        if (positionSaved) { finish(); return; }
+
+        Dialog dialog = new Dialog(this);
+        dialog.setContentView(R.layout.dialog_exit);
+        dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        dialog.getWindow().setLayout(
+            (int)(getResources().getDisplayMetrics().widthPixels * 0.88),
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        dialog.setCancelable(true);
+
+        TextView tvInfo = dialog.findViewById(R.id.tvExitInfo);
+        tvInfo.setText("Vas en la foto " + (currentIndex + 1) + " de " + mediaPaths.size());
+
+        dialog.findViewById(R.id.btnExitSave).setOnClickListener(v -> {
+            savePosition();
+            dialog.dismiss();
+            finish();
+        });
+        dialog.findViewById(R.id.btnExitNoSave).setOnClickListener(v -> {
+            dialog.dismiss();
+            finish();
+        });
+        dialog.show();
+    }
+
+    private void savePosition() {
+        prefs.edit()
+            .putString(PREF_FOLDER, currentFolderPath)
+            .putInt(PREF_INDEX, currentIndex)
+            .apply();
+        positionSaved = true;
     }
 
     private void checkSavedSession() {
@@ -117,18 +149,6 @@ public class MainActivity extends AppCompatActivity {
             prefs.edit().clear().apply();
         });
         dialog.show();
-    }
-
-    private void savePosition() {
-        if (mediaPaths.isEmpty() || currentFolderPath.isEmpty()) {
-            Toast.makeText(this, "Primero selecciona una carpeta", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        prefs.edit()
-            .putString(PREF_FOLDER, currentFolderPath)
-            .putInt(PREF_INDEX, currentIndex)
-            .apply();
-        Toast.makeText(this, "✓ Posición guardada (foto " + (currentIndex + 1) + ")", Toast.LENGTH_SHORT).show();
     }
 
     private boolean isVideo(String path) {
@@ -173,6 +193,7 @@ public class MainActivity extends AppCompatActivity {
         }
         if (requestCode == DELETE_REQUEST && resultCode == Activity.RESULT_OK) {
             mediaPaths.remove(currentIndex);
+            positionSaved = false;
             showCurrent();
         }
     }
@@ -181,17 +202,16 @@ public class MainActivity extends AppCompatActivity {
         mediaPaths.clear();
         currentIndex = 0;
         currentFolderPath = folderPath;
+        positionSaved = false;
         scanFolder(new File(folderPath));
         if (mediaPaths.isEmpty()) {
             Toast.makeText(this, "No hay fotos/videos en esa carpeta", Toast.LENGTH_SHORT).show();
             tvEmpty.setVisibility(View.VISIBLE);
             cardView.setVisibility(View.GONE);
-            btnSave.setVisibility(View.GONE);
         } else {
             currentIndex = Math.min(startIndex, mediaPaths.size() - 1);
             tvEmpty.setVisibility(View.GONE);
             cardView.setVisibility(View.VISIBLE);
-            btnSave.setVisibility(View.VISIBLE);
             showCurrent();
         }
     }
@@ -218,9 +238,7 @@ public class MainActivity extends AppCompatActivity {
         if (mediaPaths.isEmpty() || currentIndex >= mediaPaths.size()) {
             tvCounter.setText("¡Todo revisado!");
             cardView.setVisibility(View.GONE);
-            btnSave.setVisibility(View.GONE);
             tvEmpty.setVisibility(View.VISIBLE);
-            // sesión terminada
             prefs.edit().clear().apply();
             return;
         }
@@ -245,12 +263,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void keepFile() {
+        positionSaved = false;
         overlayKeep.setVisibility(View.VISIBLE);
         cardView.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_out));
         cardView.postDelayed(() -> { currentIndex++; showCurrent(); }, 200);
     }
 
     private void deleteFile() {
+        positionSaved = false;
         String path = mediaPaths.get(currentIndex);
         overlayDelete.setVisibility(View.VISIBLE);
 
@@ -303,6 +323,9 @@ public class MainActivity extends AppCompatActivity {
             else Toast.makeText(this, "Se necesitan permisos de almacenamiento", Toast.LENGTH_LONG).show();
         }
     }
+
+    @Override
+    public void onBackPressed() { onExitPressed(); }
 
     @Override
     protected void onPause() { super.onPause(); videoView.pause(); }

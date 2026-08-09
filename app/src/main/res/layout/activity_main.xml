@@ -168,60 +168,34 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="24dp"
+        android:padding="16dp"
         android:gravity="center"
         app:layout_constraintBottom_toBottomOf="parent">
 
-        <androidx.cardview.widget.CardView
-            android:id="@+id/btnDelete"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            app:cardCornerRadius="32dp"
-            app:cardBackgroundColor="#1A1A1A"
-            app:cardElevation="8dp">
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:text="✕"
-                android:textColor="#FF1744"
-                android:textSize="26sp"
-                android:gravity="center"/>
-        </androidx.cardview.widget.CardView>
-
-        <View android:layout_width="24dp" android:layout_height="1dp"/>
-
-        <!-- Save position button -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/btnSave"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            app:cardCornerRadius="24dp"
-            app:cardBackgroundColor="#1A1A1A"
-            app:cardElevation="8dp"
-            android:visibility="gone">
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:text="💾"
-                android:textSize="20sp"
-                android:gravity="center"/>
-        </androidx.cardview.widget.CardView>
-
-        <View android:layout_width="24dp" android:layout_height="1dp"/>
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="← Borrar      Guardar →"
+            android:textColor="#555"
+            android:textSize="13sp"
+            android:gravity="center"/>
 
         <androidx.cardview.widget.CardView
-            android:id="@+id/btnKeep"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            app:cardCornerRadius="32dp"
-            app:cardBackgroundColor="#1A1A1A"
-            app:cardElevation="8dp">
+            android:id="@+id/btnExit"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            app:cardCornerRadius="20dp"
+            app:cardBackgroundColor="#2A2A2A"
+            app:cardElevation="4dp">
             <TextView
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:text="♥"
-                android:textColor="#00C853"
-                android:textSize="26sp"
+                android:text="Salir"
+                android:textColor="#AAA"
+                android:textSize="14sp"
+                android:paddingLeft="20dp"
+                android:paddingRight="20dp"
                 android:gravity="center"/>
         </androidx.cardview.widget.CardView>
 
