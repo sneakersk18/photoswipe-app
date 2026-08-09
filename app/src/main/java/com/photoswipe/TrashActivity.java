@@ -34,6 +34,8 @@ public class TrashActivity extends AppCompatActivity {
 
         trashDir = new File(getExternalFilesDir(null), ".trash");
         if (!trashDir.exists()) trashDir.mkdirs();
+        // Prevent MediaStore from indexing trash folder
+        try { new java.io.File(trashDir, ".nomedia").createNewFile(); } catch (Exception ignored) {}
 
         // Back button
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
@@ -160,10 +162,13 @@ public class TrashActivity extends AppCompatActivity {
     private void emptyTrash() {
         File[] allFiles = trashDir.listFiles();
         if (allFiles != null) {
-            for (File f : allFiles) {
-                f.delete();
-            }
+            for (File f : allFiles) f.delete();
         }
+        // Force MediaStore to remove any leftover entries
+        getContentResolver().delete(
+            android.provider.MediaStore.Files.getContentUri("external"),
+            android.provider.MediaStore.MediaColumns.DATA + " LIKE ?",
+            new String[]{trashDir.getAbsolutePath() + "%"});
         trashedFiles.clear();
         adapter.notifyDataSetChanged();
         updateTrashSize();

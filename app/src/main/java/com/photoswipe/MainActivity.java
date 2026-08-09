@@ -86,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
 
         trashDir = new File(getExternalFilesDir(null), ".trash");
         trashDir.mkdirs();
+        try { new File(trashDir, ".nomedia").createNewFile(); } catch (Exception ignored) {}
 
         // View references
         imageView      = findViewById(R.id.imageView);
