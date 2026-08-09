@@ -84,9 +84,8 @@ public class MainActivity extends AppCompatActivity {
         prefs = getSharedPreferences("photoswipe", MODE_PRIVATE);
         screenWidth = getResources().getDisplayMetrics().widthPixels;
 
-        trashDir = new File(getExternalFilesDir(null), ".trash");
+        trashDir = new File(getFilesDir(), "trash");
         trashDir.mkdirs();
-        try { new File(trashDir, ".nomedia").createNewFile(); } catch (Exception ignored) {}
 
         // View references
         imageView      = findViewById(R.id.imageView);

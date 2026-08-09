@@ -32,10 +32,8 @@ public class TrashActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_trash);
 
-        trashDir = new File(getExternalFilesDir(null), ".trash");
+        trashDir = new File(getFilesDir(), "trash");
         if (!trashDir.exists()) trashDir.mkdirs();
-        // Prevent MediaStore from indexing trash folder
-        try { new java.io.File(trashDir, ".nomedia").createNewFile(); } catch (Exception ignored) {}
 
         // Back button
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
