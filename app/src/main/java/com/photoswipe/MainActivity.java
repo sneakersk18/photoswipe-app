@@ -306,13 +306,9 @@ public class MainActivity extends AppCompatActivity {
             // Write sidecar with original path
             writeSidecar(dest, originalPath);
 
-            // Remove from MediaStore
-            try {
-                getContentResolver().delete(
-                        MediaStore.Files.getContentUri("external"),
-                        MediaStore.MediaColumns.DATA + "=?",
-                        new String[]{originalPath});
-            } catch (Exception ignored) {}
+            // Remove from MediaStore by scanning the now-missing original path
+            MediaScannerConnection.scanFile(this,
+                    new String[]{originalPath}, null, null);
         }
     }
 
