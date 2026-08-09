@@ -4,6 +4,7 @@ plugins {
 
 android {
     compileSdk 34
+    namespace "com.photoswipe"
     defaultConfig {
         applicationId "com.photoswipe"
         minSdk 21
