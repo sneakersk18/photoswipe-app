@@ -2,7 +2,7 @@ package com.photoswipe;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.Dialog;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.IntentSender;
@@ -87,24 +87,36 @@ public class MainActivity extends AppCompatActivity {
         btnKeep.setOnClickListener(v -> { if (!mediaPaths.isEmpty()) keepFile(); });
         btnSave.setOnClickListener(v -> savePosition());
 
-        checkSavedSession();
+        new android.os.Handler().postDelayed(this::checkSavedSession, 300);
     }
 
     private void checkSavedSession() {
         String savedFolder = prefs.getString(PREF_FOLDER, "");
         int savedIndex = prefs.getInt(PREF_INDEX, 0);
-        if (!savedFolder.isEmpty() && savedIndex > 0) {
-            new AlertDialog.Builder(this)
-                .setTitle("Continuar donde lo dejaste")
-                .setMessage("Foto " + (savedIndex + 1) + " en:\n" + savedFolder)
-                .setPositiveButton("Continuar", (d, w) -> {
-                    loadMediaFromPath(savedFolder, savedIndex);
-                })
-                .setNegativeButton("Nueva carpeta", (d, w) -> {
-                    prefs.edit().clear().apply();
-                })
-                .show();
-        }
+        if (savedFolder.isEmpty() || savedIndex <= 0) return;
+
+        Dialog dialog = new Dialog(this);
+        dialog.setContentView(R.layout.dialog_continue);
+        dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        dialog.getWindow().setLayout(
+            (int)(getResources().getDisplayMetrics().widthPixels * 0.88),
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        dialog.setCancelable(false);
+
+        TextView tvInfo = dialog.findViewById(R.id.tvDialogInfo);
+        TextView tvFolder = dialog.findViewById(R.id.tvDialogFolder);
+        tvInfo.setText("Quedaste en la foto " + (savedIndex + 1));
+        tvFolder.setText(savedFolder);
+
+        dialog.findViewById(R.id.btnContinue).setOnClickListener(v -> {
+            dialog.dismiss();
+            loadMediaFromPath(savedFolder, savedIndex);
+        });
+        dialog.findViewById(R.id.btnNewFolder).setOnClickListener(v -> {
+            dialog.dismiss();
+            prefs.edit().clear().apply();
+        });
+        dialog.show();
     }
 
     private void savePosition() {
