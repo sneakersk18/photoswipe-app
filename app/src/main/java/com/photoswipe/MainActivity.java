@@ -3,7 +3,6 @@ package com.photoswipe;
 import android.Manifest;
 import android.app.Activity;
 import android.app.PendingIntent;
-import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.pm.PackageManager;
@@ -18,8 +17,10 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.AnimationUtils;
 import android.widget.ImageView;
+import android.widget.MediaController;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.VideoView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import androidx.core.app.ActivityCompat;
@@ -32,7 +33,8 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
 
     private ImageView imageView;
-    private TextView tvCounter, tvEmpty;
+    private VideoView videoView;
+    private TextView tvCounter, tvEmpty, tvType;
     private View overlayKeep, overlayDelete;
     private CardView cardView;
     private View btnFolder, btnDelete, btnKeep;
@@ -49,14 +51,20 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         imageView   = findViewById(R.id.imageView);
+        videoView   = findViewById(R.id.videoView);
         tvCounter   = findViewById(R.id.tvCounter);
         tvEmpty     = findViewById(R.id.tvEmpty);
+        tvType      = findViewById(R.id.tvType);
         overlayKeep = findViewById(R.id.overlayKeep);
         overlayDelete = findViewById(R.id.overlayDelete);
         cardView    = findViewById(R.id.cardView);
         btnFolder   = findViewById(R.id.btnFolder);
         btnDelete   = findViewById(R.id.btnDelete);
         btnKeep     = findViewById(R.id.btnKeep);
+
+        MediaController mc = new MediaController(this);
+        mc.setAnchorView(videoView);
+        videoView.setMediaController(mc);
 
         gestureDetector = new GestureDetector(this, new SwipeListener());
         cardView.setOnTouchListener((v, event) -> {
@@ -67,6 +75,12 @@ public class MainActivity extends AppCompatActivity {
         btnFolder.setOnClickListener(v -> requestPermissionsAndPick());
         btnDelete.setOnClickListener(v -> { if (!mediaPaths.isEmpty()) deleteFile(); });
         btnKeep.setOnClickListener(v -> { if (!mediaPaths.isEmpty()) keepFile(); });
+    }
+
+    private boolean isVideo(String path) {
+        String n = path.toLowerCase();
+        return n.endsWith(".mp4") || n.endsWith(".mkv") || n.endsWith(".3gp")
+                || n.endsWith(".mov") || n.endsWith(".avi") || n.endsWith(".webm");
     }
 
     private void requestPermissionsAndPick() {
@@ -92,9 +106,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == FOLDER_PICK_REQUEST && resultCode == RESULT_OK && data != null) {
+        if (requestCode == FOLDER_PICK_REQUEST && resultCode == RESULT_OK && data != null)
             loadMediaFromFolder(data.getData());
-        }
         if (requestCode == DELETE_REQUEST && resultCode == Activity.RESULT_OK) {
             mediaPaths.remove(currentIndex);
             showCurrent();
@@ -130,8 +143,9 @@ public class MainActivity extends AppCompatActivity {
             if (!f.isFile()) continue;
             String n = f.getName().toLowerCase();
             if (n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png") ||
-                n.endsWith(".webp") || n.endsWith(".mp4") || n.endsWith(".mkv") ||
-                n.endsWith(".3gp") || n.endsWith(".mov") || n.endsWith(".heic"))
+                n.endsWith(".webp") || n.endsWith(".heic") || n.endsWith(".mp4") ||
+                n.endsWith(".mkv") || n.endsWith(".3gp") || n.endsWith(".mov") ||
+                n.endsWith(".avi") || n.endsWith(".webm"))
                 mediaPaths.add(f.getAbsolutePath());
         }
     }
@@ -139,6 +153,8 @@ public class MainActivity extends AppCompatActivity {
     private void showCurrent() {
         overlayKeep.setVisibility(View.GONE);
         overlayDelete.setVisibility(View.GONE);
+        videoView.stopPlayback();
+
         if (mediaPaths.isEmpty() || currentIndex >= mediaPaths.size()) {
             tvCounter.setText("¡Todo revisado!");
             cardView.setVisibility(View.GONE);
@@ -146,8 +162,24 @@ public class MainActivity extends AppCompatActivity {
             tvEmpty.setText("¡Listo! 🎉");
             return;
         }
+
+        String path = mediaPaths.get(currentIndex);
         tvCounter.setText((currentIndex + 1) + " / " + mediaPaths.size());
-        Glide.with(this).load(new File(mediaPaths.get(currentIndex))).into(imageView);
+
+        if (isVideo(path)) {
+            tvType.setText("🎬 VIDEO");
+            tvType.setBackgroundResource(R.drawable.badge_video);
+            imageView.setVisibility(View.GONE);
+            videoView.setVisibility(View.VISIBLE);
+            videoView.setVideoURI(Uri.fromFile(new File(path)));
+            videoView.start();
+        } else {
+            tvType.setText("📷 FOTO");
+            tvType.setBackgroundResource(R.drawable.badge_photo);
+            videoView.setVisibility(View.GONE);
+            imageView.setVisibility(View.VISIBLE);
+            Glide.with(this).load(new File(path)).into(imageView);
+        }
     }
 
     private void keepFile() {
@@ -175,10 +207,7 @@ public class MainActivity extends AppCompatActivity {
 
         File file = new File(path);
         if (file.delete()) {
-            try {
-                getContentResolver().delete(MediaStore.Files.getContentUri("external"),
-                        MediaStore.MediaColumns.DATA + "=?", new String[]{path});
-            } catch (Exception ignored) {}
+            try { getContentResolver().delete(MediaStore.Files.getContentUri("external"), MediaStore.MediaColumns.DATA + "=?", new String[]{path}); } catch (Exception ignored) {}
             mediaPaths.remove(currentIndex);
             showCurrent();
         } else {
@@ -192,13 +221,11 @@ public class MainActivity extends AppCompatActivity {
     private Uri getMediaUri(String path) {
         String[] proj = {MediaStore.MediaColumns._ID};
         String sel = MediaStore.MediaColumns.DATA + "=?";
-        Uri[] collections = {MediaStore.Images.Media.EXTERNAL_CONTENT_URI, MediaStore.Video.Media.EXTERNAL_CONTENT_URI};
-        for (Uri col : collections) {
+        Uri[] cols = {MediaStore.Images.Media.EXTERNAL_CONTENT_URI, MediaStore.Video.Media.EXTERNAL_CONTENT_URI};
+        for (Uri col : cols) {
             try (android.database.Cursor c = getContentResolver().query(col, proj, sel, new String[]{path}, null)) {
-                if (c != null && c.moveToFirst()) {
-                    long id = c.getLong(0);
-                    return Uri.withAppendedPath(col, String.valueOf(id));
-                }
+                if (c != null && c.moveToFirst())
+                    return Uri.withAppendedPath(col, String.valueOf(c.getLong(0)));
             }
         }
         return null;
@@ -214,6 +241,9 @@ public class MainActivity extends AppCompatActivity {
             else Toast.makeText(this, "Se necesitan permisos de almacenamiento", Toast.LENGTH_LONG).show();
         }
     }
+
+    @Override
+    protected void onPause() { super.onPause(); videoView.pause(); }
 
     private class SwipeListener extends GestureDetector.SimpleOnGestureListener {
         @Override
