@@ -2,9 +2,11 @@ package com.photoswipe;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.IntentSender;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -37,44 +39,81 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvCounter, tvEmpty, tvType;
     private View overlayKeep, overlayDelete;
     private CardView cardView;
-    private View btnFolder, btnDelete, btnKeep;
+    private View btnFolder, btnDelete, btnKeep, btnSave;
     private GestureDetector gestureDetector;
     private List<String> mediaPaths = new ArrayList<>();
     private int currentIndex = 0;
+    private String currentFolderPath = "";
+    private SharedPreferences prefs;
+
     private static final int PERMISSION_REQUEST = 100;
     private static final int FOLDER_PICK_REQUEST = 200;
     private static final int DELETE_REQUEST = 300;
+    private static final String PREF_INDEX = "saved_index";
+    private static final String PREF_FOLDER = "saved_folder";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        imageView   = findViewById(R.id.imageView);
-        videoView   = findViewById(R.id.videoView);
-        tvCounter   = findViewById(R.id.tvCounter);
-        tvEmpty     = findViewById(R.id.tvEmpty);
-        tvType      = findViewById(R.id.tvType);
-        overlayKeep = findViewById(R.id.overlayKeep);
-        overlayDelete = findViewById(R.id.overlayDelete);
-        cardView    = findViewById(R.id.cardView);
-        btnFolder   = findViewById(R.id.btnFolder);
-        btnDelete   = findViewById(R.id.btnDelete);
-        btnKeep     = findViewById(R.id.btnKeep);
+        prefs = getSharedPreferences("photoswipe", MODE_PRIVATE);
+
+        imageView    = findViewById(R.id.imageView);
+        videoView    = findViewById(R.id.videoView);
+        tvCounter    = findViewById(R.id.tvCounter);
+        tvEmpty      = findViewById(R.id.tvEmpty);
+        tvType       = findViewById(R.id.tvType);
+        overlayKeep  = findViewById(R.id.overlayKeep);
+        overlayDelete= findViewById(R.id.overlayDelete);
+        cardView     = findViewById(R.id.cardView);
+        btnFolder    = findViewById(R.id.btnFolder);
+        btnDelete    = findViewById(R.id.btnDelete);
+        btnKeep      = findViewById(R.id.btnKeep);
+        btnSave      = findViewById(R.id.btnSave);
 
         MediaController mc = new MediaController(this);
         mc.setAnchorView(videoView);
         videoView.setMediaController(mc);
 
         gestureDetector = new GestureDetector(this, new SwipeListener());
-        cardView.setOnTouchListener((v, event) -> {
-            gestureDetector.onTouchEvent(event);
-            return true;
-        });
+        cardView.setOnTouchListener((v, event) -> { gestureDetector.onTouchEvent(event); return true; });
 
         btnFolder.setOnClickListener(v -> requestPermissionsAndPick());
         btnDelete.setOnClickListener(v -> { if (!mediaPaths.isEmpty()) deleteFile(); });
         btnKeep.setOnClickListener(v -> { if (!mediaPaths.isEmpty()) keepFile(); });
+        btnSave.setOnClickListener(v -> savePosition());
+
+        checkSavedSession();
+    }
+
+    private void checkSavedSession() {
+        String savedFolder = prefs.getString(PREF_FOLDER, "");
+        int savedIndex = prefs.getInt(PREF_INDEX, 0);
+        if (!savedFolder.isEmpty() && savedIndex > 0) {
+            new AlertDialog.Builder(this)
+                .setTitle("Continuar donde lo dejaste")
+                .setMessage("Foto " + (savedIndex + 1) + " en:\n" + savedFolder)
+                .setPositiveButton("Continuar", (d, w) -> {
+                    loadMediaFromPath(savedFolder, savedIndex);
+                })
+                .setNegativeButton("Nueva carpeta", (d, w) -> {
+                    prefs.edit().clear().apply();
+                })
+                .show();
+        }
+    }
+
+    private void savePosition() {
+        if (mediaPaths.isEmpty() || currentFolderPath.isEmpty()) {
+            Toast.makeText(this, "Primero selecciona una carpeta", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        prefs.edit()
+            .putString(PREF_FOLDER, currentFolderPath)
+            .putInt(PREF_INDEX, currentIndex)
+            .apply();
+        Toast.makeText(this, "✓ Posición guardada (foto " + (currentIndex + 1) + ")", Toast.LENGTH_SHORT).show();
     }
 
     private boolean isVideo(String path) {
@@ -106,32 +145,38 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == FOLDER_PICK_REQUEST && resultCode == RESULT_OK && data != null)
-            loadMediaFromFolder(data.getData());
+        if (requestCode == FOLDER_PICK_REQUEST && resultCode == RESULT_OK && data != null) {
+            Uri treeUri = data.getData();
+            String docId = DocumentsContract.getTreeDocumentId(treeUri);
+            String[] split = docId.split(":");
+            String type = split[0];
+            String path = split.length > 1 ? split[1] : "";
+            String fullPath = "primary".equalsIgnoreCase(type)
+                    ? Environment.getExternalStorageDirectory() + "/" + path
+                    : "/storage/" + type + "/" + path;
+            loadMediaFromPath(fullPath, 0);
+        }
         if (requestCode == DELETE_REQUEST && resultCode == Activity.RESULT_OK) {
             mediaPaths.remove(currentIndex);
             showCurrent();
         }
     }
 
-    private void loadMediaFromFolder(Uri treeUri) {
+    private void loadMediaFromPath(String folderPath, int startIndex) {
         mediaPaths.clear();
         currentIndex = 0;
-        String docId = DocumentsContract.getTreeDocumentId(treeUri);
-        String[] split = docId.split(":");
-        String type = split[0];
-        String path = split.length > 1 ? split[1] : "";
-        String fullPath = "primary".equalsIgnoreCase(type)
-                ? Environment.getExternalStorageDirectory() + "/" + path
-                : "/storage/" + type + "/" + path;
-        scanFolder(new File(fullPath));
+        currentFolderPath = folderPath;
+        scanFolder(new File(folderPath));
         if (mediaPaths.isEmpty()) {
             Toast.makeText(this, "No hay fotos/videos en esa carpeta", Toast.LENGTH_SHORT).show();
             tvEmpty.setVisibility(View.VISIBLE);
             cardView.setVisibility(View.GONE);
+            btnSave.setVisibility(View.GONE);
         } else {
+            currentIndex = Math.min(startIndex, mediaPaths.size() - 1);
             tvEmpty.setVisibility(View.GONE);
             cardView.setVisibility(View.VISIBLE);
+            btnSave.setVisibility(View.VISIBLE);
             showCurrent();
         }
     }
@@ -158,8 +203,10 @@ public class MainActivity extends AppCompatActivity {
         if (mediaPaths.isEmpty() || currentIndex >= mediaPaths.size()) {
             tvCounter.setText("¡Todo revisado!");
             cardView.setVisibility(View.GONE);
+            btnSave.setVisibility(View.GONE);
             tvEmpty.setVisibility(View.VISIBLE);
-            tvEmpty.setText("¡Listo! 🎉");
+            tvEmpty.setText("¡Listo! 🎉\nRevisaste todas las fotos");
+            prefs.edit().clear().apply();
             return;
         }
 
