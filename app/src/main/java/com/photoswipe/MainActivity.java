@@ -36,6 +36,7 @@ public class MainActivity extends AppCompatActivity {
 
     private ImageView imageView;
     private VideoView videoView;
+    private View videoContainer;
     private TextView tvCounter, tvType;
     private View tvEmpty;
     private View overlayKeep, overlayDelete;
@@ -60,8 +61,9 @@ public class MainActivity extends AppCompatActivity {
 
         prefs = getSharedPreferences("photoswipe", MODE_PRIVATE);
 
-        imageView    = findViewById(R.id.imageView);
-        videoView    = findViewById(R.id.videoView);
+        imageView      = findViewById(R.id.imageView);
+        videoView      = findViewById(R.id.videoView);
+        videoContainer = findViewById(R.id.videoContainer);
         tvCounter    = findViewById(R.id.tvCounter);
         tvEmpty      = findViewById(R.id.tvEmpty);
         tvType       = findViewById(R.id.tvType);
@@ -218,13 +220,13 @@ public class MainActivity extends AppCompatActivity {
             tvType.setText("🎬 VIDEO");
             tvType.setBackgroundResource(R.drawable.badge_video);
             imageView.setVisibility(View.GONE);
-            videoView.setVisibility(View.VISIBLE);
+            videoContainer.setVisibility(View.VISIBLE);
             videoView.setVideoURI(Uri.fromFile(new File(path)));
             videoView.start();
         } else {
             tvType.setText("📷 FOTO");
             tvType.setBackgroundResource(R.drawable.badge_photo);
-            videoView.setVisibility(View.GONE);
+            videoContainer.setVisibility(View.GONE);
             imageView.setVisibility(View.VISIBLE);
             Glide.with(this).load(new File(path)).into(imageView);
         }
