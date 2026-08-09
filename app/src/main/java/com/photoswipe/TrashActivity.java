@@ -1,7 +1,15 @@
 package com.photoswipe;
 
-import android.media.MediaScannerConnection;
+import android.app.Activity;
+import android.app.PendingIntent;
+import android.content.ContentUris;
+import android.content.IntentSender;
+import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -9,13 +17,9 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -25,19 +29,17 @@ public class TrashActivity extends AppCompatActivity {
     private TrashAdapter adapter;
     private List<File> trashedFiles;
     private TextView tvTrashSize;
-    private File trashDir;
+    private SharedPreferences prefs;
+    private static final int DELETE_REQUEST = 400;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_trash);
 
-        trashDir = new File(getFilesDir(), "trash");
-        if (!trashDir.exists()) trashDir.mkdirs();
+        prefs = getSharedPreferences("photoswipe", MODE_PRIVATE);
 
-        // Back button
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
-
         tvTrashSize = findViewById(R.id.tvTrashSize);
 
         Button btnEmpty = findViewById(R.id.btnEmptyTrash);
@@ -49,32 +51,32 @@ public class TrashActivity extends AppCompatActivity {
         loadTrashFiles();
     }
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == DELETE_REQUEST && resultCode == Activity.RESULT_OK) {
+            // System confirmed deletion — clear trash list
+            prefs.edit().putString(MainActivity.PREF_TRASH, "").apply();
+            trashedFiles.clear();
+            adapter.notifyDataSetChanged();
+            updateTrashSize();
+            Toast.makeText(this, "Papelera vaciada", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void loadTrashFiles() {
         trashedFiles = new ArrayList<>();
-
-        File[] files = trashDir.listFiles();
-        if (files != null) {
-            // Filter out .txt sidecar files — only show media files
-            for (File f : files) {
-                String name = f.getName().toLowerCase(Locale.ROOT);
-                if (!name.endsWith(".txt")) {
-                    trashedFiles.add(f);
-                }
+        String trashPaths = prefs.getString(MainActivity.PREF_TRASH, "");
+        if (!trashPaths.isEmpty()) {
+            for (String path : trashPaths.split("\\|")) {
+                File f = new File(path);
+                if (f.exists()) trashedFiles.add(f);
             }
-            // Sort newest first
-            trashedFiles.sort((a, b) -> Long.compare(b.lastModified(), a.lastModified()));
         }
 
         adapter = new TrashAdapter(trashedFiles, new TrashAdapter.TrashCallback() {
-            @Override
-            public void onRestore(File file) {
-                restoreFile(file);
-            }
-
-            @Override
-            public void onDelete(File file) {
-                permanentlyDelete(file);
-            }
+            @Override public void onRestore(File file) { restoreFile(file); }
+            @Override public void onDelete(File file) { deleteSingle(file); }
         });
 
         recyclerView.setAdapter(adapter);
@@ -83,64 +85,55 @@ public class TrashActivity extends AppCompatActivity {
 
     private void updateTrashSize() {
         long totalBytes = 0;
-        for (File f : trashedFiles) {
-            totalBytes += f.length();
-        }
+        for (File f : trashedFiles) totalBytes += f.length();
         double mb = totalBytes / 1024.0 / 1024.0;
         String count = trashedFiles.size() + (trashedFiles.size() == 1 ? " archivo" : " archivos");
         tvTrashSize.setText(String.format(Locale.getDefault(), "%s  •  %.1f MB", count, mb));
     }
 
-    private void restoreFile(File trashFile) {
-        String originalPath = readSidecar(trashFile);
-        if (originalPath == null || originalPath.isEmpty()) {
-            Toast.makeText(this, "No se encontró la ruta original", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        File destination = new File(originalPath);
-        File parentDir = destination.getParentFile();
-        if (parentDir != null && !parentDir.exists()) {
-            parentDir.mkdirs();
-        }
-
-        try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                Files.move(trashFile.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            } else {
-                if (!copyFile(trashFile, destination)) {
-                    Toast.makeText(this, "Error al restaurar", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                trashFile.delete();
-            }
-
-            // Delete sidecar
-            File sidecar = sidecarFor(trashFile);
-            if (sidecar.exists()) sidecar.delete();
-
-            // Re-scan into MediaStore
-            MediaScannerConnection.scanFile(this, new String[]{destination.getAbsolutePath()}, null, null);
-
-            updateTrashSize();
-            Toast.makeText(this, "Restaurado: " + destination.getName(), Toast.LENGTH_SHORT).show();
-        } catch (IOException e) {
-            e.printStackTrace();
-            Toast.makeText(this, "Error al restaurar: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        }
+    private void restoreFile(File file) {
+        // Just remove from trash list — file was never moved
+        removeFromTrashList(file.getAbsolutePath());
+        trashedFiles.remove(file);
+        adapter.notifyDataSetChanged();
+        updateTrashSize();
+        Toast.makeText(this, "Restaurado: " + file.getName(), Toast.LENGTH_SHORT).show();
     }
 
-    private void permanentlyDelete(File trashFile) {
-        File sidecar = sidecarFor(trashFile);
-        boolean deleted = trashFile.delete();
-        if (sidecar.exists()) sidecar.delete();
-
-        if (deleted) {
-            updateTrashSize();
-            Toast.makeText(this, "Eliminado permanentemente", Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(this, "No se pudo eliminar", Toast.LENGTH_SHORT).show();
-        }
+    private void deleteSingle(File file) {
+        new AlertDialog.Builder(this, R.style.DarkDialog)
+            .setTitle("Eliminar")
+            .setMessage("¿Eliminar permanentemente " + file.getName() + "?")
+            .setPositiveButton("Eliminar", (d, w) -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    Uri uri = getMediaUri(file.getAbsolutePath());
+                    if (uri != null) {
+                        try {
+                            List<Uri> uris = new ArrayList<>();
+                            uris.add(uri);
+                            PendingIntent pi = MediaStore.createDeleteRequest(getContentResolver(), uris);
+                            startIntentSenderForResult(pi.getIntentSender(), DELETE_REQUEST + 1, null, 0, 0, 0);
+                            removeFromTrashList(file.getAbsolutePath());
+                            trashedFiles.remove(file);
+                            adapter.notifyDataSetChanged();
+                            updateTrashSize();
+                            return;
+                        } catch (IntentSender.SendIntentException e) { e.printStackTrace(); }
+                    }
+                }
+                // API 29- or fallback
+                if (file.delete()) {
+                    removeFromTrashList(file.getAbsolutePath());
+                    trashedFiles.remove(file);
+                    adapter.notifyDataSetChanged();
+                    updateTrashSize();
+                    android.media.MediaScannerConnection.scanFile(this, new String[]{file.getAbsolutePath()}, null, null);
+                } else {
+                    Toast.makeText(this, "No se pudo eliminar", Toast.LENGTH_SHORT).show();
+                }
+            })
+            .setNegativeButton("Cancelar", null)
+            .show();
     }
 
     private void confirmEmptyTrash() {
@@ -150,55 +143,63 @@ public class TrashActivity extends AppCompatActivity {
         }
 
         new AlertDialog.Builder(this, R.style.DarkDialog)
-                .setTitle("Vaciar papelera")
-                .setMessage("¿Eliminar permanentemente " + trashedFiles.size() + " archivo(s)? Esta acción no se puede deshacer.")
-                .setPositiveButton("Vaciar", (dialog, which) -> emptyTrash())
-                .setNegativeButton("Cancelar", null)
-                .show();
+            .setTitle("Vaciar papelera")
+            .setMessage("¿Eliminar permanentemente " + trashedFiles.size() + " archivo(s)?\nEsta acción no se puede deshacer.")
+            .setPositiveButton("Vaciar", (dialog, which) -> emptyTrash())
+            .setNegativeButton("Cancelar", null)
+            .show();
     }
 
     private void emptyTrash() {
-        File[] allFiles = trashDir.listFiles();
-        if (allFiles != null) {
-            for (File f : allFiles) f.delete();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // API 30+: one system dialog for all files
+            List<Uri> uris = new ArrayList<>();
+            for (File f : trashedFiles) {
+                Uri uri = getMediaUri(f.getAbsolutePath());
+                if (uri != null) uris.add(uri);
+            }
+            if (!uris.isEmpty()) {
+                try {
+                    PendingIntent pi = MediaStore.createDeleteRequest(getContentResolver(), uris);
+                    startIntentSenderForResult(pi.getIntentSender(), DELETE_REQUEST, null, 0, 0, 0);
+                    return;
+                } catch (IntentSender.SendIntentException e) { e.printStackTrace(); }
+            }
         }
-        // Force MediaStore to remove any leftover entries
-        getContentResolver().delete(
-            android.provider.MediaStore.Files.getContentUri("external"),
-            android.provider.MediaStore.MediaColumns.DATA + " LIKE ?",
-            new String[]{trashDir.getAbsolutePath() + "%"});
+
+        // API 29- with legacy storage: direct delete
+        int deleted = 0;
+        for (File f : new ArrayList<>(trashedFiles)) {
+            if (f.delete()) {
+                android.media.MediaScannerConnection.scanFile(this, new String[]{f.getAbsolutePath()}, null, null);
+                deleted++;
+            }
+        }
+        prefs.edit().putString(MainActivity.PREF_TRASH, "").apply();
         trashedFiles.clear();
         adapter.notifyDataSetChanged();
         updateTrashSize();
-        Toast.makeText(this, "Papelera vaciada", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, deleted + " archivo(s) eliminado(s)", Toast.LENGTH_SHORT).show();
     }
 
-    /** Reads the sidecar .txt file next to a trash file to get the original path. */
-    private String readSidecar(File mediaFile) {
-        File sidecar = sidecarFor(mediaFile);
-        if (!sidecar.exists()) return null;
-        try (BufferedReader br = new BufferedReader(new FileReader(sidecar))) {
-            return br.readLine();
-        } catch (IOException e) {
-            return null;
+    private void removeFromTrashList(String path) {
+        String existing = prefs.getString(MainActivity.PREF_TRASH, "");
+        if (existing.isEmpty()) return;
+        List<String> list = new ArrayList<>(Arrays.asList(existing.split("\\|")));
+        list.remove(path);
+        prefs.edit().putString(MainActivity.PREF_TRASH, android.text.TextUtils.join("|", list)).apply();
+    }
+
+    private Uri getMediaUri(String path) {
+        String[] proj = {MediaStore.MediaColumns._ID};
+        String sel = MediaStore.MediaColumns.DATA + "=?";
+        Uri[] cols = {MediaStore.Images.Media.EXTERNAL_CONTENT_URI, MediaStore.Video.Media.EXTERNAL_CONTENT_URI};
+        for (Uri col : cols) {
+            try (Cursor c = getContentResolver().query(col, proj, sel, new String[]{path}, null)) {
+                if (c != null && c.moveToFirst())
+                    return ContentUris.withAppendedId(col, c.getLong(0));
+            }
         }
-    }
-
-    /** Returns the expected sidecar file for a given media file in trash. */
-    private File sidecarFor(File mediaFile) {
-        return new File(trashDir, mediaFile.getName() + ".txt");
-    }
-
-    private boolean copyFile(File src, File dst) {
-        try (java.io.FileInputStream in = new java.io.FileInputStream(src);
-             java.io.FileOutputStream out = new java.io.FileOutputStream(dst)) {
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-            return true;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
+        return null;
     }
 }
