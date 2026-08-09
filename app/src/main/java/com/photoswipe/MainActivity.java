@@ -36,7 +36,8 @@ public class MainActivity extends AppCompatActivity {
 
     private ImageView imageView;
     private VideoView videoView;
-    private TextView tvCounter, tvEmpty, tvType;
+    private TextView tvCounter, tvType;
+    private View tvEmpty;
     private View overlayKeep, overlayDelete;
     private CardView cardView;
     private View btnFolder, btnDelete, btnKeep, btnSave;
@@ -205,7 +206,7 @@ public class MainActivity extends AppCompatActivity {
             cardView.setVisibility(View.GONE);
             btnSave.setVisibility(View.GONE);
             tvEmpty.setVisibility(View.VISIBLE);
-            tvEmpty.setText("¡Listo! 🎉\nRevisaste todas las fotos");
+            // sesión terminada
             prefs.edit().clear().apply();
             return;
         }
