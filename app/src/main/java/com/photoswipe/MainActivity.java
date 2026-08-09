@@ -2,6 +2,7 @@ package com.photoswipe;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.IntentSender;
