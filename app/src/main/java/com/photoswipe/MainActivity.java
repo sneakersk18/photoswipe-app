@@ -296,7 +296,18 @@ public class MainActivity extends AppCompatActivity {
         }
         if (!moved) {
             moved = copyFileLegacy(src, dest);
-            if (moved) src.delete();
+            if (moved) {
+                boolean deleted = src.delete();
+                if (!deleted) {
+                    // Fallback: delete via ContentResolver
+                    try {
+                        getContentResolver().delete(
+                            MediaStore.Files.getContentUri("external"),
+                            MediaStore.MediaColumns.DATA + "=?",
+                            new String[]{originalPath});
+                    } catch (Exception ignored) {}
+                }
+            }
         }
 
         if (moved) {

@@ -20,6 +20,7 @@
         android:label="PhotoSwipe"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:requestLegacyExternalStorage="true"
         android:theme="@style/AppTheme">
 
         <!-- Splash: LAUNCHER entry point -->
